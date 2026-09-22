@@ -30,10 +30,12 @@ import { UploadModal } from "@/components/datasets/UploadModal";
 import { Sparkline } from "@/components/ui/Sparkline";
 import { formatBytes } from "@/lib/utils";
 
+import { DEMO_DATASETS, getDemoReports } from "@/lib/demoDatasets";
+
 export default function DashboardHomePage() {
-  const [datasets, setDatasets] = useState<Dataset[]>([]);
-  const [reports, setReports] = useState<Report[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [datasets, setDatasets] = useState<Dataset[]>(DEMO_DATASETS);
+  const [reports, setReports] = useState<Report[]>(getDemoReports());
+  const [loading, setLoading] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
 
   useEffect(() => {

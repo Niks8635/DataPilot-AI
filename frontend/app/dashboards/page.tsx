@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { Dashboard, DashboardWidget, Dataset, DatasetProfile, DashboardPage } from "@/types";
 import { api } from "@/lib/api";
+import { DEMO_DATASETS, getDemoDashboard, getDemoProfile, getDemoRows } from "@/lib/demoDatasets";
 import { Navbar } from "@/components/layout/Navbar";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Card } from "@/components/ui/Card";
@@ -52,13 +53,14 @@ function DashboardsStudio() {
   const searchParams = useSearchParams();
   const datasetIdParam = searchParams.get("datasetId");
 
-  const [datasets, setDatasets] = useState<Dataset[]>([]);
-  const [selectedDatasetId, setSelectedDatasetId] = useState<string>("");
-  const [profile, setProfile] = useState<DatasetProfile | null>(null);
-  const [rawRows, setRawRows] = useState<Record<string, any>[]>([]);
+  const initialTargetId = datasetIdParam || "demo-ds-sales";
+  const [datasets, setDatasets] = useState<Dataset[]>(DEMO_DATASETS);
+  const [selectedDatasetId, setSelectedDatasetId] = useState<string>(initialTargetId);
+  const [profile, setProfile] = useState<DatasetProfile | null>(getDemoProfile(initialTargetId));
+  const [rawRows, setRawRows] = useState<Record<string, any>[]>(getDemoRows(initialTargetId));
 
-  const [dashboardsList, setDashboardsList] = useState<Dashboard[]>([]);
-  const [currentDashboard, setCurrentDashboard] = useState<Dashboard | null>(null);
+  const [dashboardsList, setDashboardsList] = useState<Dashboard[]>([getDemoDashboard(initialTargetId)]);
+  const [currentDashboard, setCurrentDashboard] = useState<Dashboard | null>(getDemoDashboard(initialTargetId));
 
   // Studio UI state
   const [activePageId, setActivePageId] = useState<string>("page_1");

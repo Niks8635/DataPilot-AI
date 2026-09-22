@@ -23,6 +23,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { DynamicChart } from "@/components/charts/DynamicChart";
+import { DEMO_DATASETS } from "@/lib/demoDatasets";
 
 interface ChatMessage {
   id: string;
@@ -36,9 +37,16 @@ function AskDataContent() {
   const datasetIdParam = searchParams.get("datasetId");
   const initialQuery = searchParams.get("q");
 
-  const [datasets, setDatasets] = useState<Dataset[]>([]);
-  const [selectedDatasetId, setSelectedDatasetId] = useState<string>("");
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [datasets, setDatasets] = useState<Dataset[]>(DEMO_DATASETS);
+  const [selectedDatasetId, setSelectedDatasetId] = useState<string>(datasetIdParam || "demo-ds-sales");
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    {
+      id: "intro",
+      role: "assistant",
+      content:
+        "Hello! I am your AI Data Analyst. Ask me any analytical question about your dataset, and I will safely formulate the analysis, compute the answer, and generate an interactive visualization.",
+    },
+  ]);
   const [inputQuery, setInputQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | undefined>();

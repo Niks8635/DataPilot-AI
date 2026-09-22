@@ -25,10 +25,12 @@ import { Badge } from "@/components/ui/Badge";
 import { UploadModal } from "@/components/datasets/UploadModal";
 import { formatBytes } from "@/lib/utils";
 
+import { DEMO_DATASETS, getDemoRelationships } from "@/lib/demoDatasets";
+
 export default function DatasetsPage() {
-  const [datasets, setDatasets] = useState<Dataset[]>([]);
-  const [relationships, setRelationships] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [datasets, setDatasets] = useState<Dataset[]>(DEMO_DATASETS);
+  const [relationships, setRelationships] = useState<any[]>(getDemoRelationships());
+  const [loading, setLoading] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
 
   const loadDatasets = async () => {
