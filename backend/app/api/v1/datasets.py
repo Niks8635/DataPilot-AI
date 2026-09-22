@@ -18,8 +18,8 @@ from app.data_processing.storage import save_upload_file, save_dataframe_as_csv
 from app.analysis.profiler import profile_dataset
 from app.analysis.quality import compute_data_quality
 from app.cleaning.engine import generate_cleaning_suggestions, apply_cleaning_operations, preview_cleaning_operation
-from app.utils.demo_data import generate_sales_demo_df
 from app.reports.export import build_multi_tab_excel
+from app.utils.demo_data import generate_sales_demo_df, generate_saas_churn_demo_df, generate_clinical_demo_df
 from app.analysis.statistics import compute_correlations, detect_outliers_detailed
 from app.analysis.eda import perform_eda
 from app.analysis.forecasting import check_forecasting_eligibility, generate_forecast
@@ -87,18 +87,38 @@ async def upload_dataset(
     return dataset
 
 @router.post("/demo", response_model=DatasetResponse)
-def load_demo_dataset(user_id: str = Depends(get_current_user_id), db: Session = Depends(get_db)):
-    df = generate_sales_demo_df()
-    demo_filename = "sales_data.csv"
+def load_demo_dataset(
+    type: Optional[str] = Query("sales"),
+    user_id: str = Depends(get_current_user_id), 
+    db: Session = Depends(get_db)
+):
+    if type == "saas":
+        df = generate_saas_churn_demo_df()
+        demo_filename = "saas_churn_telemetry.csv"
+        dataset_name = "SaaS Subscriptions & Churn Analytics"
+        desc = "SaaS Cohort Telemetry & Retention Dataset"
+        f_type = "parquet"
+    elif type == "clinical":
+        df = generate_clinical_demo_df()
+        demo_filename = "clinical_patient_metrics.csv"
+        dataset_name = "Healthcare Clinical Trial & Patient Vitals"
+        desc = "Phase II Clinical Trial Vitals & Efficacy Dataset"
+        f_type = "json"
+    else:
+        df = generate_sales_demo_df()
+        demo_filename = "ecommerce_sales_q3.csv"
+        dataset_name = "Global E-Commerce & Retail Sales"
+        desc = "Global Multi-Regional Sales & Margins Dataset"
+        f_type = "csv"
+
     csv_bytes = df.to_csv(index=False).encode("utf-8")
-    
     dest_path, _, file_size = save_upload_file(csv_bytes, demo_filename)
     
     dataset = Dataset(
         user_id=user_id,
-        name="Global Sales & Profitability",
+        name=dataset_name,
         original_filename=demo_filename,
-        file_type="csv",
+        file_type=f_type,
         file_path=dest_path,
         current_file_path=dest_path,
         row_count=len(df),
@@ -115,7 +135,7 @@ def load_demo_dataset(user_id: str = Depends(get_current_user_id), db: Session =
         dataset_id=dataset.id,
         version_number=1,
         file_path=dest_path,
-        description="Sample Sales Analytics Dataset",
+        description=desc,
         row_count=len(df),
         column_count=len(df.columns)
     )

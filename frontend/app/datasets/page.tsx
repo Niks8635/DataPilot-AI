@@ -130,47 +130,76 @@ export default function DatasetsPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {datasets.map((ds) => (
-                <Link
-                  key={ds.id}
-                  href={`/datasets/${ds.id}`}
-                  className="group block rounded-2xl border border-white/[0.08] bg-slate-900/60 hover:bg-slate-900 hover:border-cyan-500/30 transition p-5 flex flex-col justify-between shadow-lg"
-                >
-                  <div>
-                    <div className="flex items-center justify-between gap-2 mb-3">
-                      <span className="text-[10px] px-2 py-0.5 rounded-full font-mono uppercase bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 font-semibold">
-                        {ds.file_type} • v{ds.current_version}
-                      </span>
-                      <button
-                        onClick={(e) => handleDelete(ds.id, e)}
-                        className="text-slate-500 hover:text-rose-400 transition p-1 rounded hover:bg-slate-800"
-                        title="Delete dataset"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+              {datasets.map((ds) => {
+                const isDemo = ds.id.startsWith("demo-ds-");
+                return (
+                  <Link
+                    key={ds.id}
+                    href={`/datasets/${ds.id}`}
+                    className="group block rounded-2xl border border-white/[0.08] bg-slate-900/60 hover:bg-slate-900 hover:border-cyan-500/40 transition p-5 flex flex-col justify-between shadow-lg relative overflow-hidden"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-2 mb-3">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-mono uppercase bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 font-semibold">
+                            {ds.file_type} • v{ds.current_version}
+                          </span>
+                          {isDemo && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-violet-500/15 text-violet-300 border border-violet-500/30 font-medium flex items-center gap-1">
+                              <Sparkles className="w-2.5 h-2.5 text-violet-400" />
+                              Interactive Demo
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          onClick={(e) => handleDelete(ds.id, e)}
+                          className="text-slate-500 hover:text-rose-400 transition p-1 rounded hover:bg-slate-800"
+                          title="Reset dataset"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      <h3 className="text-base font-semibold text-white group-hover:text-cyan-300 transition tracking-tight">
+                        {ds.name}
+                      </h3>
+                      <p className="text-xs text-slate-400 mt-1 font-mono text-[11px] truncate">
+                        {ds.original_filename}
+                      </p>
+
+                      {/* Related Fields Summary */}
+                      <div className="mt-3 p-2 rounded-xl bg-white/[0.02] border border-white/[0.05] text-[11px] font-mono space-y-1">
+                        <div className="text-slate-500 text-[10px] uppercase font-semibold">Key Fields & Metrics:</div>
+                        <div className="text-slate-300 text-[11px] truncate">
+                          {ds.id === "demo-ds-sales" && "Revenue, Units Sold, Margin, Region, Rating, Discount"}
+                          {ds.id === "demo-ds-saas" && "MRR, Active Seats, Support Tickets, NPS, Churn Risk"}
+                          {ds.id === "demo-ds-clinical" && "Efficacy Score, Systolic BP, BMI, Cholesterol, Cohort"}
+                          {!isDemo && `${ds.column_count} validated continuous & categorical dimensions`}
+                        </div>
+                      </div>
                     </div>
 
-                    <h3 className="text-base font-semibold text-white group-hover:text-cyan-300 transition tracking-tight">
-                      {ds.name}
-                    </h3>
-                    <p className="text-xs text-slate-400 mt-1 truncate">
-                      {ds.original_filename}
-                    </p>
-                  </div>
+                    <div className="mt-5">
+                      <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400 font-mono">
+                        <div>
+                          <strong className="text-white font-mono">{ds.row_count.toLocaleString()}</strong> rows
+                        </div>
+                        <div>
+                          <strong className="text-white font-mono">{ds.column_count}</strong> columns
+                        </div>
+                        <div className="text-[11px]">
+                          {formatBytes(ds.file_size_bytes)}
+                        </div>
+                      </div>
 
-                  <div className="mt-6 pt-4 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
-                    <div>
-                      <strong className="text-white font-mono">{ds.row_count.toLocaleString()}</strong> rows
+                      <div className="mt-3 flex items-center justify-between text-xs font-semibold text-cyan-400 group-hover:text-cyan-300">
+                        <span>Launch Analytics Workspace</span>
+                        <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition" />
+                      </div>
                     </div>
-                    <div>
-                      <strong className="text-white font-mono">{ds.column_count}</strong> columns
-                    </div>
-                    <div className="font-mono text-[11px]">
-                      {formatBytes(ds.file_size_bytes)}
-                    </div>
-                  </div>
-                </Link>
-              ))}
+                  </Link>
+                );
+              })}
             </div>
           )}
         </main>

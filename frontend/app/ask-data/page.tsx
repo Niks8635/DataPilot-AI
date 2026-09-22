@@ -113,13 +113,33 @@ function AskDataContent() {
     }
   };
 
-  const sampleQuestions = [
-    "What is total Revenue and Profit?",
-    "Top 5 categories by Revenue",
-    "Compare Profit across Regions",
-    "Show monthly sales trend",
-    "What is the average transaction value?",
-  ];
+  const sampleQuestions = React.useMemo(() => {
+    if (selectedDatasetId === "demo-ds-saas") {
+      return [
+        "What is the average churn risk by subscription plan?",
+        "Which plan tier generates the highest MRR?",
+        "Compare support ticket volume across active vs churned accounts",
+        "Show account status distribution",
+        "What is the average NPS score for Enterprise accounts?",
+      ];
+    }
+    if (selectedDatasetId === "demo-ds-clinical") {
+      return [
+        "What is the mean efficacy score by treatment cohort?",
+        "Are adverse events correlated with patient dosage?",
+        "Show distribution of systolic blood pressure",
+        "Compare recovery rates across cohorts",
+        "What is the average patient age in the study?",
+      ];
+    }
+    return [
+      "What is total Revenue and Profit?",
+      "Top product categories by Revenue",
+      "Compare Profit across Regions",
+      "Show monthly sales trend",
+      "What is the average transaction value?",
+    ];
+  }, [selectedDatasetId]);
 
   return (
     <div className="flex min-h-screen bg-slate-950 text-slate-100">

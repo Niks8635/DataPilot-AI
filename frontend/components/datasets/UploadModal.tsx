@@ -83,11 +83,11 @@ export function UploadModal({ isOpen, onClose, onSuccess }: UploadModalProps) {
     }
   };
 
-  const handleLoadDemo = async () => {
+  const handleLoadDemo = async (demoType = "sales") => {
     try {
       setDemoLoading(true);
       setErrorMessage("");
-      const dataset = await api.datasets.loadDemo();
+      const dataset = await api.datasets.loadDemo(demoType);
       onSuccess(dataset);
       reset();
     } catch (err: any) {
@@ -195,19 +195,50 @@ export function UploadModal({ isOpen, onClose, onSuccess }: UploadModalProps) {
           </div>
         )}
 
+        {/* Demo Datasets Quick Bar */}
+        <div className="pt-2 border-t border-slate-800 space-y-2">
+          <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono">
+            <span className="flex items-center gap-1 text-slate-300">
+              <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Or explore pre-configured demo datasets:</span>
+            </span>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              type="button"
+              disabled={demoLoading || (status !== "idle" && status !== "error")}
+              onClick={() => handleLoadDemo("sales")}
+              className="p-2 rounded-xl border border-white/[0.08] bg-slate-900/80 hover:bg-slate-850 hover:border-violet-500/40 text-left transition flex flex-col justify-between group disabled:opacity-50"
+            >
+              <div className="text-[10px] font-mono text-violet-400 uppercase font-bold">CSV • 1.2K rows</div>
+              <div className="text-xs font-semibold text-white group-hover:text-violet-300 truncate">E-Commerce Sales</div>
+              <div className="text-[10px] text-slate-400 truncate">12 fields (Revenue, Margin)</div>
+            </button>
+            <button
+              type="button"
+              disabled={demoLoading || (status !== "idle" && status !== "error")}
+              onClick={() => handleLoadDemo("saas")}
+              className="p-2 rounded-xl border border-white/[0.08] bg-slate-900/80 hover:bg-slate-850 hover:border-cyan-500/40 text-left transition flex flex-col justify-between group disabled:opacity-50"
+            >
+              <div className="text-[10px] font-mono text-cyan-400 uppercase font-bold">Parquet • 850 rows</div>
+              <div className="text-xs font-semibold text-white group-hover:text-cyan-300 truncate">SaaS Churn</div>
+              <div className="text-[10px] text-slate-400 truncate">11 fields (MRR, NPS, Risk)</div>
+            </button>
+            <button
+              type="button"
+              disabled={demoLoading || (status !== "idle" && status !== "error")}
+              onClick={() => handleLoadDemo("clinical")}
+              className="p-2 rounded-xl border border-white/[0.08] bg-slate-900/80 hover:bg-slate-850 hover:border-emerald-500/40 text-left transition flex flex-col justify-between group disabled:opacity-50"
+            >
+              <div className="text-[10px] font-mono text-emerald-400 uppercase font-bold">JSON • 500 rows</div>
+              <div className="text-xs font-semibold text-white group-hover:text-emerald-300 truncate">Clinical Trials</div>
+              <div className="text-[10px] text-slate-400 truncate">12 fields (Efficacy, Vitals)</div>
+            </button>
+          </div>
+        </div>
+
         {/* Action Buttons */}
-        <div className="flex items-center justify-between pt-2 border-t border-slate-800">
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={handleLoadDemo}
-            loading={demoLoading}
-            disabled={status !== "idle" && status !== "error"}
-          >
-            <Sparkles className="w-3.5 h-3.5 mr-1 text-cyan-400" />
-            Try Demo Sales Data
-          </Button>
+        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
 
           <div className="flex items-center gap-2">
             <Button type="button" variant="ghost" size="sm" onClick={reset}>
