@@ -11,6 +11,7 @@ import {
   AskDataResponse, 
   Report 
 } from "@/types";
+import { processClientAskDataQuery } from "./askDataEngine";
 
 // ==========================================
 // 1. DATASET DEFINITIONS (3 Rich Demo Datasets)
@@ -1261,105 +1262,9 @@ export function getDemoDashboard(id: string): Dashboard {
 // ==========================================
 
 export function getDemoAskDataAnswer(id: string, question: string): AskDataResponse {
-  const q = question.toLowerCase();
+  const rows = getDemoRows(id);
   const ds = DEMO_DATASETS.find((d) => d.id === id) || DEMO_DATASETS[0];
-
-  if (id === "demo-ds-saas") {
-    if (q.includes("churn") || q.includes("plan") || q.includes("risk")) {
-      return {
-        conversation_id: `conv_${Date.now()}`,
-        message_id: `msg_${Date.now()}`,
-        question,
-        answer_text: "Across SaaS subscription tiers, the **Starter Plan** exhibits the highest churn risk at **42.5%**, primarily driven by accounts encountering technical hurdles with >4 support tickets. In contrast, **Enterprise** accounts maintain an exceptionally low churn risk of **3.8%**.",
-        executed_code: `# Python AST Computation
-churn_by_plan = df.groupby('Subscription_Plan')['Churn_Risk_Score'].mean() * 100
-result = churn_by_plan.round(1).to_dict()
-print(result)`,
-        chart_config: {
-          chart_id: "chart_ask_churn",
-          chart_type: "bar",
-          title: "Average Churn Risk by Subscription Plan (%)",
-          x_data: ["Starter", "Growth", "Enterprise", "Dedicated Scale"],
-          y_data: [42.5, 18.2, 3.8, 1.2],
-        },
-        analysis_steps: [
-          { step_number: 1, description: "Identified relevant dimension 'Subscription_Plan' and target 'Churn_Risk_Score'", operation: "column_selection" },
-          { step_number: 2, description: "Computed grouped mean risk percentages across all 850 accounts", operation: "groupby_mean" },
-          { step_number: 3, description: "Formatted interactive bar distribution", operation: "visualization" },
-        ],
-        confidence_score: 0.98,
-        suggestions: [
-          "Which payment method has the lowest churn?",
-          "How many accounts have more than 5 support tickets?",
-          "What is the average MRR by plan?",
-        ],
-        queried_columns: ["Subscription_Plan", "Churn_Risk_Score"],
-      };
-    }
-  }
-
-  if (id === "demo-ds-clinical") {
-    if (q.includes("efficacy") || q.includes("cohort") || q.includes("dosage") || q.includes("treatment")) {
-      return {
-        conversation_id: `conv_${Date.now()}`,
-        message_id: `msg_${Date.now()}`,
-        question,
-        answer_text: "**Cohort B (100mg Dosage)** achieved the highest clinical efficacy score of **84.6%**, outperforming **Cohort A (50mg)** at **58.4%** and the **Placebo Control** at **26.2%**. The difference is statistically significant (p < 0.001).",
-        executed_code: `# Python AST Statistical Evaluation
-mean_efficacy = df.groupby('Treatment_Cohort')['Efficacy_Score'].mean()
-print(mean_efficacy.round(2))`,
-        chart_config: {
-          chart_id: "chart_ask_eff",
-          chart_type: "bar",
-          title: "Mean Efficacy Score by Treatment Cohort (%)",
-          x_data: ["Placebo Control", "Cohort A (50mg)", "Cohort B (100mg)"],
-          y_data: [26.2, 58.4, 84.6],
-        },
-        analysis_steps: [
-          { step_number: 1, description: "Filtered patients by Treatment_Cohort", operation: "filtering" },
-          { step_number: 2, description: "Computed two-tailed student t-test on Efficacy_Score", operation: "statistical_eval" },
-          { step_number: 3, description: "Synthesized comparative clinical visualization", operation: "visualization" },
-        ],
-        confidence_score: 0.99,
-        suggestions: [
-          "What is the distribution of blood pressure across cohorts?",
-          "Are adverse events correlated with patient age?",
-          "Show recovery status breakdown",
-        ],
-        queried_columns: ["Treatment_Cohort", "Efficacy_Score"],
-      };
-    }
-  }
-
-  // Default: E-Commerce Sales
-  return {
-    conversation_id: `conv_${Date.now()}`,
-    message_id: `msg_${Date.now()}`,
-    question,
-    answer_text: `Based on verified analysis of ${ds.name}, **North America** leads with **$958,000** in gross revenue (52.0% share), followed by **EMEA** at **$524,000** (28.4%), **APAC** at **$248,000** (13.5%), and **LATAM** at **$112,500** (6.1%). APAC is expanding at the fastest annual growth velocity (+38.1%).`,
-    executed_code: `# Python AST Sandboxed Computation
-revenue_by_region = df.groupby('Region')['Revenue'].sum().sort_values(ascending=False)
-print(revenue_by_region)`,
-    chart_config: {
-      chart_id: "chart_ask_rev",
-      chart_type: "bar",
-      title: "Gross Revenue by Region ($)",
-      x_data: ["North America", "EMEA", "APAC", "LATAM"],
-      y_data: [958000, 524000, 248000, 112500],
-    },
-    analysis_steps: [
-      { step_number: 1, description: "Queried geographic territory dimension 'Region' and numeric metric 'Revenue'", operation: "schema_parse" },
-      { step_number: 2, description: "Aggregated gross sales sums across all 1,200 orders", operation: "groupby_sum" },
-      { step_number: 3, description: "Calculated regional percentage shares and growth velocity", operation: "share_calculation" },
-    ],
-    confidence_score: 0.99,
-    suggestions: [
-      "Which product category has the highest profit margin?",
-      "What is the monthly sales trend for Q3?",
-      "Show orders by customer segment",
-    ],
-    queried_columns: ["Region", "Revenue"],
-  };
+  return processClientAskDataQuery(id, question, rows, ds.name);
 }
 
 // ==========================================

@@ -31,6 +31,7 @@ import {
   getDemoRelationships, 
   getDemoReports 
 } from "@/lib/demoDatasets";
+import { processClientAskDataQuery } from "@/lib/askDataEngine";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
@@ -468,6 +469,12 @@ export const api = {
           body: JSON.stringify({ dataset_id: datasetId, question, conversation_id: conversationId }),
         });
       } catch {
+        try {
+          const preview = await api.datasets.preview(datasetId, 1, 100);
+          if (preview && preview.rows && preview.rows.length > 0) {
+            return processClientAskDataQuery(datasetId, question, preview.rows, preview.name || "Custom Dataset");
+          }
+        } catch {}
         return getDemoAskDataAnswer(datasetId, question);
       }
     },
