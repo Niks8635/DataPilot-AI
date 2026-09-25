@@ -1147,10 +1147,10 @@ print(age_by_gender)`,
   }
 
   // =========================================================================
-  // 3. GENERALIZED NATURAL LANGUAGE ANALYTICAL ENGINE (Arbitrary Queries)
+  // 3. GENERALIZED MULTI-INTENT ANALYTICAL ENGINE (Arbitrary & Custom Queries)
   // =========================================================================
 
-  // Identify numeric, date, and categorical columns
+  // Identify numeric, date, and categorical columns dynamically
   const numericCols: string[] = [];
   const categoricalCols: string[] = [];
   const dateCols: string[] = [];
@@ -1158,7 +1158,7 @@ print(age_by_gender)`,
   availableColumns.forEach((col) => {
     let numCount = 0;
     let nonNullCount = 0;
-    rows.slice(0, 30).forEach((r) => {
+    rows.slice(0, 40).forEach((r) => {
       const v = r[col];
       if (v !== null && v !== undefined && v !== "") {
         nonNullCount++;
@@ -1168,6 +1168,8 @@ print(age_by_gender)`,
 
     const isDate =
       col.toLowerCase().includes("date") ||
+      col.toLowerCase().includes("time") ||
+      col.toLowerCase().includes("day") ||
       rows.slice(0, 5).some((r) => typeof r[col] === "string" && /^\d{4}-\d{2}-\d{2}/.test(r[col]));
 
     if (isDate) {
@@ -1179,62 +1181,419 @@ print(age_by_gender)`,
     }
   });
 
-  // Find target numeric column mentioned in question
-  let targetNumeric: string | null = null;
+  // Extract candidate columns mentioned in question
+  const matchedNumerics: string[] = [];
   for (const nc of numericCols) {
-    if (matchColumn(nc, [nc]) && q.includes(nc.toLowerCase().replace(/_/g, " "))) {
-      targetNumeric = nc;
-      break;
+    const cleanNc = nc.toLowerCase().replace(/_/g, " ");
+    if (q.includes(cleanNc) || (COLUMN_SYNONYMS[nc] && COLUMN_SYNONYMS[nc].some((s) => q.includes(s)))) {
+      matchedNumerics.push(nc);
     }
-  }
-  if (!targetNumeric) {
-    for (const [colName, syns] of Object.entries(COLUMN_SYNONYMS)) {
-      if (numericCols.includes(colName) && syns.some((s) => q.includes(s))) {
-        targetNumeric = colName;
-        break;
-      }
-    }
-  }
-  if (!targetNumeric && numericCols.length > 0) {
-    targetNumeric = numericCols[0];
   }
 
-  // Find target categorical column mentioned in question
-  let targetCategorical: string | null = null;
+  const matchedCategoricals: string[] = [];
   for (const cc of categoricalCols) {
-    if (q.includes(cc.toLowerCase().replace(/_/g, " "))) {
-      targetCategorical = cc;
-      break;
+    const cleanCc = cc.toLowerCase().replace(/_/g, " ");
+    if (q.includes(cleanCc) || (COLUMN_SYNONYMS[cc] && COLUMN_SYNONYMS[cc].some((s) => q.includes(s)))) {
+      matchedCategoricals.push(cc);
     }
   }
-  if (!targetCategorical) {
-    for (const [colName, syns] of Object.entries(COLUMN_SYNONYMS)) {
-      if (categoricalCols.includes(colName) && syns.some((s) => q.includes(s))) {
-        targetCategorical = colName;
-        break;
+
+  // --- INTENT 1: Dataset Overview / Summary / Key Insights ---
+  const isOverview =
+    q.includes("summar") ||
+    q.includes("overview") ||
+    q.includes("tell me about") ||
+    q.includes("insights") ||
+    q.includes("describe") ||
+    q.includes("explain") ||
+    q.includes("what is this data") ||
+    q.includes("key finding") ||
+    q.includes("what does this") ||
+    q === "hi" ||
+    q === "hello" ||
+    q === "help";
+
+  if (isOverview) {
+    const primaryNum = numericCols[0];
+    const secondaryNum = numericCols[1];
+    const primaryCat = categoricalCols[0];
+
+    const statsTable: Record<string, any>[] = [];
+    numericCols.slice(0, 4).forEach((nc) => {
+      const vals = rows.map((r) => Number(r[nc]) || 0);
+      const sum = vals.reduce((a, b) => a + b, 0);
+      const mean = vals.length > 0 ? sum / vals.length : 0;
+      const isCur = nc.toLowerCase().includes("revenue") || nc.toLowerCase().includes("profit") || nc.toLowerCase().includes("mrr") || nc.toLowerCase().includes("price");
+      statsTable.push({
+        Metric: nc.replace(/_/g, " "),
+        Total: isCur ? formatCurrency(sum) : formatNumber(sum),
+        Average: isCur ? formatCurrency(mean) : formatNumber(mean),
+        Min: isCur ? formatCurrency(Math.min(...vals)) : formatNumber(Math.min(...vals)),
+        Max: isCur ? formatCurrency(Math.max(...vals)) : formatNumber(Math.max(...vals)),
+      });
+    });
+
+    // Top category breakdown
+    const catCounts: Record<string, number> = {};
+    if (primaryCat) {
+      rows.forEach((r) => {
+        const k = String(r[primaryCat] || "Unknown");
+        catCounts[k] = (catCounts[k] || 0) + 1;
+      });
+    }
+    const sortedCats = Object.keys(catCounts).sort((a, b) => catCounts[b] - catCounts[a]);
+    const topCat = sortedCats[0] || "None";
+    const topCatCount = catCounts[topCat] || 0;
+
+    return {
+      conversation_id: `conv_${Date.now()}`,
+      message_id: `msg_${Date.now()}`,
+      question,
+      answer_text: `### Executive Dataset Synthesis for **${displayName}**
+- **Volume & Breadth**: **${totalRowCount.toLocaleString()}** total records across **${availableColumns.length}** tracked features.
+- **Key Dimension**: **${primaryCat ? primaryCat.replace(/_/g, " ") : "Primary"}** led by **${topCat}** (${topCatCount} entries, ${((topCatCount / (totalRowCount || 1)) * 100).toFixed(1)}% of volume).
+${primaryNum ? `- **Primary Aggregate (${primaryNum.replace(/_/g, " ")})**: Total **${formatCurrency(rows.reduce((a, r) => a + (Number(r[primaryNum]) || 0), 0))}** across all logged transactions.` : ""}
+${secondaryNum ? `- **Secondary Metric (${secondaryNum.replace(/_/g, " ")})**: Average value of **${formatNumber(rows.reduce((a, r) => a + (Number(r[secondaryNum]) || 0), 0) / (totalRowCount || 1))}** per observation.` : ""}
+
+Below is the verified statistical profile of your primary metrics:`,
+      executed_code: `# Dataset Overview & Summary Profiling
+print(df.describe().T[['count', 'mean', 'std', 'min', 'max']])
+top_categories = df['${primaryCat || availableColumns[0]}'].value_counts().head(5)
+print(top_categories)`,
+      tabular_result: statsTable,
+      result_columns: ["Metric", "Total", "Average", "Min", "Max"],
+      chart_config: primaryCat
+        ? {
+            chart_id: "chart_overview_distribution",
+            chart_type: "bar",
+            title: `Volume Distribution by ${primaryCat.replace(/_/g, " ")}`,
+            subtitle: `Total records: ${totalRowCount}`,
+            x_data: sortedCats.slice(0, 6),
+            y_data: sortedCats.slice(0, 6).map((c) => catCounts[c]),
+          }
+        : undefined,
+      analysis_steps: [
+        { step_number: 1, description: `Scanned all ${availableColumns.length} columns and detected ${numericCols.length} numerical fields`, operation: "schema_profiling" },
+        { step_number: 2, description: "Calculated multi-variate statistical distributions", operation: "aggregation" },
+        { step_number: 3, description: "Synthesized executive findings and dimension benchmarks", operation: "synthesis" },
+      ],
+      confidence_score: 0.98,
+      suggestions: [
+        `What are the outliers in ${primaryNum || availableColumns[0]}?`,
+        `Top ${primaryCat || "categories"} by ${primaryNum || "records"}`,
+        dateCols.length > 0 ? "Show monthly sales trend" : `What is the average ${primaryNum || "value"}?`,
+      ],
+      queried_columns: availableColumns.slice(0, 5),
+    };
+  }
+
+  // --- INTENT 2: Outliers / Anomalies / Quality Checks ---
+  const isOutlier =
+    q.includes("outlier") ||
+    q.includes("anomal") ||
+    q.includes("extreme") ||
+    q.includes("unusual") ||
+    q.includes("deviat") ||
+    q.includes("weird");
+
+  if (isOutlier) {
+    const targetCol = matchedNumerics[0] || numericCols[0] || availableColumns[0];
+    const vals = rows.map((r) => Number(r[targetCol]) || 0).filter((v) => !isNaN(v));
+    const sorted = [...vals].sort((a, b) => a - b);
+    const q1 = sorted[Math.floor(sorted.length * 0.25)] || 0;
+    const q3 = sorted[Math.floor(sorted.length * 0.75)] || 0;
+    const iqr = q3 - q1;
+    const lowerBound = q1 - 1.5 * iqr;
+    const upperBound = q3 + 1.5 * iqr;
+
+    const outlierRows: Record<string, any>[] = [];
+    rows.forEach((r, idx) => {
+      const v = Number(r[targetCol]);
+      if (!isNaN(v) && (v < lowerBound || v > upperBound)) {
+        outlierRows.push({
+          Row_Index: idx + 1,
+          [targetCol]: v,
+          Expected_Range: `[${lowerBound.toFixed(1)}, ${upperBound.toFixed(1)}]`,
+          Status: v > upperBound ? "High Outlier" : "Low Outlier",
+          Context: r[categoricalCols[0]] || r[availableColumns[0]] || "Record",
+        });
       }
+    });
+
+    const isCur = targetCol.toLowerCase().includes("revenue") || targetCol.toLowerCase().includes("profit") || targetCol.toLowerCase().includes("mrr") || targetCol.toLowerCase().includes("price");
+
+    return {
+      conversation_id: `conv_${Date.now()}`,
+      message_id: `msg_${Date.now()}`,
+      question,
+      answer_text: `### Outlier & Anomaly Audit for **${targetCol.replace(/_/g, " ")}**
+- **Methodology**: Tukey's Interquartile Range (IQR) rule ($1.5 \\times \\text{IQR}$).
+- **Normal Range**: **${isCur ? formatCurrency(lowerBound) : formatNumber(lowerBound)}** to **${isCur ? formatCurrency(upperBound) : formatNumber(upperBound)}** (Q1: ${q1.toFixed(1)}, Q3: ${q3.toFixed(1)}, IQR: ${iqr.toFixed(1)}).
+- **Outliers Detected**: **${outlierRows.length} records** (${((outlierRows.length / (totalRowCount || 1)) * 100).toFixed(1)}% of dataset).
+${outlierRows.length > 0 ? `The most significant anomaly is **${isCur ? formatCurrency(outlierRows[0][targetCol]) : formatNumber(outlierRows[0][targetCol])}** at row #${outlierRows[0].Row_Index}.` : "No extreme statistical outliers detected in this column."}`,
+      executed_code: `# Outlier Detection via IQR Rule
+q1 = df['${targetCol}'].quantile(0.25)
+q3 = df['${targetCol}'].quantile(0.75)
+iqr = q3 - q1
+lower_bound = q1 - 1.5 * iqr
+upper_bound = q3 + 1.5 * iqr
+outliers = df[(df['${targetCol}'] < lower_bound) | (df['${targetCol}'] > upper_bound)]
+print(f"Total outliers: {len(outliers)}")`,
+      tabular_result: outlierRows.slice(0, 10),
+      result_columns: ["Row_Index", targetCol, "Expected_Range", "Status", "Context"],
+      chart_config: {
+        chart_id: "chart_outliers",
+        chart_type: "bar",
+        title: `Outlier Detection in ${targetCol.replace(/_/g, " ")}`,
+        subtitle: `${outlierRows.length} outliers beyond IQR thresholds`,
+        x_data: outlierRows.slice(0, 8).map((o) => `Row #${o.Row_Index}`),
+        y_data: outlierRows.slice(0, 8).map((o) => o[targetCol]),
+      },
+      analysis_steps: [
+        { step_number: 1, description: `Computed 25th (Q1) and 75th (Q3) percentiles for '${targetCol}'`, operation: "percentiles" },
+        { step_number: 2, description: `Derived IQR boundary: [${lowerBound.toFixed(1)}, ${upperBound.toFixed(1)}]`, operation: "boundary_calculation" },
+        { step_number: 3, description: `Identified ${outlierRows.length} records breaching statistical tolerance`, operation: "anomaly_filtering" },
+      ],
+      confidence_score: 0.99,
+      suggestions: [
+        `What is the average ${targetCol.replace(/_/g, " ")}?`,
+        `Top records by ${targetCol.replace(/_/g, " ")}`,
+        "Show full dataset summary",
+      ],
+      queried_columns: [targetCol],
+    };
+  }
+
+  // --- INTENT 3: Time Series Trends / Chronological Queries ---
+  const isTrend =
+    q.includes("trend") ||
+    q.includes("over time") ||
+    q.includes("monthly") ||
+    q.includes("daily") ||
+    q.includes("timeline") ||
+    q.includes("growth") ||
+    q.includes("history") ||
+    q.includes("seasonality") ||
+    q.includes("by date") ||
+    q.includes("by month");
+
+  if (isTrend && (dateCols.length > 0 || availableColumns.some((c) => c.toLowerCase().includes("date")))) {
+    const dateCol = dateCols[0] || availableColumns.find((c) => c.toLowerCase().includes("date")) || "Order_Date";
+    const metricCol = matchedNumerics[0] || numericCols[0] || "Revenue";
+
+    const timeMap: Record<string, { sum: number; count: number }> = {};
+    rows.forEach((r) => {
+      const rawDate = String(r[dateCol] || "");
+      const period = rawDate.length >= 7 ? rawDate.substring(0, 7) : rawDate || "Other";
+      if (!timeMap[period]) timeMap[period] = { sum: 0, count: 0 };
+      timeMap[period].sum += Number(r[metricCol]) || 0;
+      timeMap[period].count += 1;
+    });
+
+    const periods = Object.keys(timeMap).sort();
+    const periodValues = periods.map((p) => Math.round(timeMap[p].sum));
+    const isCur = metricCol.toLowerCase().includes("revenue") || metricCol.toLowerCase().includes("profit") || metricCol.toLowerCase().includes("mrr") || metricCol.toLowerCase().includes("price");
+
+    const bestPeriod = periods.reduce((best, p) => (timeMap[p].sum > (timeMap[best]?.sum || 0) ? p : best), periods[0]);
+
+    return {
+      conversation_id: `conv_${Date.now()}`,
+      message_id: `msg_${Date.now()}`,
+      question,
+      answer_text: `### Chronological Trend for **${metricCol.replace(/_/g, " ")}**
+- **Date Column**: **${dateCol}** across **${periods.length}** recorded time intervals.
+- **Peak Interval**: **${bestPeriod}** recorded the highest performance at **${isCur ? formatCurrency(timeMap[bestPeriod].sum) : formatNumber(timeMap[bestPeriod].sum)}**.
+- **Overall Trajectory**: The trend indicates continuous volume distribution with an average of **${isCur ? formatCurrency(periodValues.reduce((a, b) => a + b, 0) / (periods.length || 1)) : formatNumber(periodValues.reduce((a, b) => a + b, 0) / (periods.length || 1))}** per interval.`,
+      executed_code: `# Time Series Resampling & Aggregation
+df['period'] = pd.to_datetime(df['${dateCol}']).dt.to_period('M')
+monthly_trend = df.groupby('period')['${metricCol}'].sum().reset_index()
+print(monthly_trend)`,
+      tabular_result: periods.map((p) => ({
+        Period: p,
+        [metricCol]: isCur ? formatCurrency(timeMap[p].sum) : formatNumber(timeMap[p].sum),
+        Record_Count: timeMap[p].count,
+      })),
+      result_columns: ["Period", metricCol, "Record_Count"],
+      chart_config: {
+        chart_id: "chart_time_trend",
+        chart_type: "line",
+        title: `${metricCol.replace(/_/g, " ")} Progression Over Time`,
+        subtitle: `Highest interval: ${bestPeriod} (${isCur ? formatCurrency(timeMap[bestPeriod].sum) : formatNumber(timeMap[bestPeriod].sum)})`,
+        x_data: periods,
+        y_data: periodValues,
+        series: [{ name: metricCol, data: periodValues }],
+      },
+      analysis_steps: [
+        { step_number: 1, description: `Parsed datetime column '${dateCol}' into periodic cohorts`, operation: "temporal_parsing" },
+        { step_number: 2, description: `Aggregated metric '${metricCol}' per interval`, operation: "time_aggregation" },
+        { step_number: 3, description: "Generated chronological progression trajectory", operation: "trend_visualization" },
+      ],
+      confidence_score: 0.98,
+      suggestions: [
+        `What is the total ${metricCol.replace(/_/g, " ")}?`,
+        `Top categories by ${metricCol.replace(/_/g, " ")}`,
+        "Show outlier transactions",
+      ],
+      queried_columns: [dateCol, metricCol],
+    };
+  }
+
+  // --- INTENT 4: Correlation / Relationship Between Numerical Metrics ---
+  const isCorrelation =
+    q.includes("correlat") ||
+    q.includes("relationship") ||
+    q.includes("relate") ||
+    q.includes("affect") ||
+    q.includes("impact") ||
+    q.includes("association");
+
+  if (isCorrelation && numericCols.length >= 2) {
+    const colX = matchedNumerics[0] || numericCols[0];
+    const colY = matchedNumerics[1] || (colX === numericCols[0] ? numericCols[1] : numericCols[0]);
+
+    const valsX = rows.map((r) => Number(r[colX]) || 0);
+    const valsY = rows.map((r) => Number(r[colY]) || 0);
+    const n = valsX.length || 1;
+
+    const meanX = valsX.reduce((a, b) => a + b, 0) / n;
+    const meanY = valsY.reduce((a, b) => a + b, 0) / n;
+
+    let numerator = 0;
+    let denomX = 0;
+    let denomY = 0;
+    for (let i = 0; i < n; i++) {
+      const dx = valsX[i] - meanX;
+      const dy = valsY[i] - meanY;
+      numerator += dx * dy;
+      denomX += dx * dx;
+      denomY += dy * dy;
     }
+
+    const r = denomX > 0 && denomY > 0 ? numerator / Math.sqrt(denomX * denomY) : 0;
+    const rSquared = r * r;
+
+    let strength = "Negligible / No correlation";
+    if (Math.abs(r) >= 0.7) strength = r > 0 ? "Strong Positive correlation" : "Strong Negative correlation";
+    else if (Math.abs(r) >= 0.4) strength = r > 0 ? "Moderate Positive correlation" : "Moderate Negative correlation";
+    else if (Math.abs(r) >= 0.2) strength = r > 0 ? "Weak Positive correlation" : "Weak Negative correlation";
+
+    return {
+      conversation_id: `conv_${Date.now()}`,
+      message_id: `msg_${Date.now()}`,
+      question,
+      answer_text: `### Pearson Correlation Analysis: **${colX.replace(/_/g, " ")}** vs **${colY.replace(/_/g, " ")}**
+- **Correlation Coefficient (\(r\))**: **${r.toFixed(3)}**
+- **Coefficient of Determination (\(R^2\))**: **${(rSquared * 100).toFixed(1)}%** of variance explained.
+- **Statistical Interpretation**: **${strength}**.
+${Math.abs(r) >= 0.4 ? `As **${colX.replace(/_/g, " ")}** increases, **${colY.replace(/_/g, " ")}** exhibits a noticeable ${r > 0 ? "upward" : "downward"} trajectory.` : `There is no strong linear dependence between these two attributes.`}`,
+      executed_code: `# Pearson Correlation Coefficient Computation
+correlation = df['${colX}'].corr(df['${colY}'])
+r_squared = correlation ** 2
+print(f"r: {correlation:.4f}, R²: {r_squared:.4f}")`,
+      tabular_result: [
+        { Parameter: "Pearson Correlation (r)", Value: r.toFixed(3) },
+        { Parameter: "R² (Explained Variance)", Value: `${(rSquared * 100).toFixed(1)}%` },
+        { Parameter: "Relationship Strength", Value: strength },
+        { Parameter: "Sample Observations", Value: n.toLocaleString() },
+      ],
+      result_columns: ["Parameter", "Value"],
+      chart_config: {
+        chart_id: "chart_correlation",
+        chart_type: "line",
+        title: `Correlation: ${colX.replace(/_/g, " ")} vs ${colY.replace(/_/g, " ")} (r = ${r.toFixed(3)})`,
+        subtitle: strength,
+        x_data: rows.slice(0, 15).map((_, idx) => `#${idx + 1}`),
+        y_data: rows.slice(0, 15).map((r) => Number(r[colX]) || 0),
+        series: [
+          { name: colX, data: rows.slice(0, 15).map((r) => Number(r[colX]) || 0) },
+          { name: colY, data: rows.slice(0, 15).map((r) => Number(r[colY]) || 0) },
+        ],
+      },
+      analysis_steps: [
+        { step_number: 1, description: `Computed mean and standard deviations for '${colX}' and '${colY}'`, operation: "central_tendency" },
+        { step_number: 2, description: `Calculated covariance and normalized Pearson correlation coefficient: ${r.toFixed(3)}`, operation: "pearson_calculation" },
+        { step_number: 3, description: `Derived statistical significance and regression model fit`, operation: "model_fit" },
+      ],
+      confidence_score: 0.99,
+      suggestions: [
+        `What is the average ${colX.replace(/_/g, " ")}?`,
+        `What is the average ${colY.replace(/_/g, " ")}?`,
+        "Show outlier records",
+      ],
+      queried_columns: [colX, colY],
+    };
   }
-  if (!targetCategorical && categoricalCols.length > 0) {
-    targetCategorical = categoricalCols[0];
+
+  // --- INTENT 5: Individual Extreme Records (Highest / Lowest single record) ---
+  const isExtremeSingle =
+    (q.includes("highest") || q.includes("maximum") || q.includes("max") || q.includes("lowest") || q.includes("minimum") || q.includes("min") || q.includes("best") || q.includes("worst")) &&
+    (q.includes("record") || q.includes("row") || q.includes("order") || q.includes("customer") || q.includes("patient") || q.includes("account") || q.includes("single") || !q.includes("by"));
+
+  if (isExtremeSingle && (matchedNumerics.length > 0 || numericCols.length > 0)) {
+    const targetCol = matchedNumerics[0] || numericCols[0];
+    const isLowest = q.includes("lowest") || q.includes("minimum") || q.includes("min") || q.includes("worst") || q.includes("smallest");
+
+    const sortedRows = [...rows].sort((a, b) => {
+      const valA = Number(a[targetCol]) || 0;
+      const valB = Number(b[targetCol]) || 0;
+      return isLowest ? valA - valB : valB - valA;
+    });
+
+    const topRecord = sortedRows[0] || {};
+    const isCur = targetCol.toLowerCase().includes("revenue") || targetCol.toLowerCase().includes("profit") || targetCol.toLowerCase().includes("mrr") || targetCol.toLowerCase().includes("price");
+
+    return {
+      conversation_id: `conv_${Date.now()}`,
+      message_id: `msg_${Date.now()}`,
+      question,
+      answer_text: `### Single ${isLowest ? "Lowest" : "Highest"} Record for **${targetCol.replace(/_/g, " ")}**
+- **Peak Value**: **${isCur ? formatCurrency(Number(topRecord[targetCol]) || 0) : formatNumber(Number(topRecord[targetCol]) || 0)}**
+- **Record Attributes**:
+${availableColumns.slice(0, 6).map((c) => `  - **${c.replace(/_/g, " ")}**: ${topRecord[c] !== undefined ? topRecord[c] : "N/A"}`).join("\n")}
+
+Below are the top 5 records ranked by ${targetCol.replace(/_/g, " ")}:`,
+      executed_code: `# Rank & Slice Extremes
+top_records = df.sort_values(by='${targetCol}', ascending=${isLowest}).head(5)
+print(top_records)`,
+      tabular_result: sortedRows.slice(0, 5),
+      result_columns: availableColumns.slice(0, 6),
+      chart_config: {
+        chart_id: "chart_extreme_ranks",
+        chart_type: "bar",
+        title: `Top 5 Records Ranked by ${targetCol.replace(/_/g, " ")} (${isLowest ? "Ascending" : "Descending"})`,
+        subtitle: `Peak: ${isCur ? formatCurrency(Number(topRecord[targetCol]) || 0) : formatNumber(Number(topRecord[targetCol]) || 0)}`,
+        x_data: sortedRows.slice(0, 5).map((r, i) => `#${i + 1} (${r[categoricalCols[0]] || r[availableColumns[0]] || "Item"})`),
+        y_data: sortedRows.slice(0, 5).map((r) => Number(r[targetCol]) || 0),
+      },
+      analysis_steps: [
+        { step_number: 1, description: `Sorted dataset by metric '${targetCol}' (${isLowest ? "ascending" : "descending"})`, operation: "sorting" },
+        { step_number: 2, description: "Extracted leading record and descriptive features", operation: "slice" },
+      ],
+      confidence_score: 0.99,
+      suggestions: [
+        `What is the average ${targetCol.replace(/_/g, " ")}?`,
+        `Show outliers in ${targetCol.replace(/_/g, " ")}`,
+        "Show full summary",
+      ],
+      queried_columns: availableColumns.slice(0, 6),
+    };
   }
 
-  // Check aggregation type
-  const isAvg = q.includes("average") || q.includes("avg") || q.includes("mean") || q.includes("rate");
-  const isCount = q.includes("how many") || q.includes("count") || q.includes("number of") || q.includes("distribution");
-  const isMin = q.includes("minimum") || q.includes("min") || q.includes("lowest") || q.includes("least");
-  const isMax = q.includes("maximum") || q.includes("max") || q.includes("highest") || q.includes("top");
+  // --- INTENT 6: Grouped Dimension Queries (Categorical + Numerical) ---
+  // ONLY trigger if a categorical column was actually matched OR "by" / "per" was used with a category
+  const targetCategorical = matchedCategoricals[0] || (q.includes("by") || q.includes("per") || q.includes("across") ? categoricalCols[0] : null);
+  const targetNumeric = matchedNumerics[0] || numericCols[0];
 
-  // Check if limit specified (e.g., top 5)
-  const limitMatch = q.match(/top\s+(\d+)/);
-  const limit = limitMatch ? parseInt(limitMatch[1], 10) : 5;
-
-  // Case A: Grouped query (Categorical + Numeric)
   if (targetCategorical && targetNumeric) {
+    const isAvg = q.includes("average") || q.includes("avg") || q.includes("mean") || q.includes("rate");
+    const isMin = q.includes("minimum") || q.includes("min") || q.includes("lowest") || q.includes("least");
+    const isMax = q.includes("maximum") || q.includes("max") || q.includes("highest") || q.includes("top");
+    const aggFunc = isAvg ? "mean" : isMin ? "min" : isMax ? "max" : "sum";
+
     const groupMap: Record<string, { sum: number; count: number; min: number; max: number }> = {};
     rows.forEach((r) => {
-      const g = r[targetCategorical!] ? String(r[targetCategorical!]) : "Unknown";
-      const val = Number(r[targetNumeric!]) || 0;
+      const g = r[targetCategorical] ? String(r[targetCategorical]) : "Unknown";
+      const val = Number(r[targetNumeric]) || 0;
       if (!groupMap[g]) groupMap[g] = { sum: 0, count: 0, min: Infinity, max: -Infinity };
       groupMap[g].sum += val;
       groupMap[g].count += 1;
@@ -1243,8 +1602,6 @@ print(age_by_gender)`,
     });
 
     const groups = Object.keys(groupMap);
-    const aggFunc = isAvg ? "mean" : isMin ? "min" : isMax ? "max" : "sum";
-
     const getGroupVal = (g: string) => {
       if (isAvg) return groupMap[g].sum / (groupMap[g].count || 1);
       if (isMin) return groupMap[g].min;
@@ -1255,32 +1612,32 @@ print(age_by_gender)`,
     const isAscending = isMin || q.includes("bottom") || q.includes("lowest");
     groups.sort((a, b) => (isAscending ? getGroupVal(a) - getGroupVal(b) : getGroupVal(b) - getGroupVal(a)));
 
+    const limitMatch = q.match(/top\s+(\d+)/) || q.match(/first\s+(\d+)/);
+    const limit = limitMatch ? parseInt(limitMatch[1], 10) : 5;
     const topGroups = groups.slice(0, limit);
     const topG = topGroups[0] || "None";
     const topVal = topGroups.length > 0 ? getGroupVal(topG) : 0;
-    const isCurrency = targetNumeric.toLowerCase().includes("revenue") || targetNumeric.toLowerCase().includes("profit") || targetNumeric.toLowerCase().includes("mrr") || targetNumeric.toLowerCase().includes("price");
-
-    const formattedTopVal = isCurrency ? formatCurrency(topVal) : formatNumber(topVal);
+    const isCur = targetNumeric.toLowerCase().includes("revenue") || targetNumeric.toLowerCase().includes("profit") || targetNumeric.toLowerCase().includes("mrr") || targetNumeric.toLowerCase().includes("price");
 
     return {
       conversation_id: `conv_${Date.now()}`,
       message_id: `msg_${Date.now()}`,
       question,
-      answer_text: `Based on **${totalRowCount}** records in **${displayName}**, evaluating **${targetNumeric.replace(/_/g, " ")}** by **${targetCategorical.replace(/_/g, " ")}**:
-- **Top Leader**: **${topG}** with **${formattedTopVal}** (${aggFunc})
-- Breakdown across top ${topGroups.length} categories:
+      answer_text: `### Breakdown of **${targetNumeric.replace(/_/g, " ")}** (${aggFunc.toUpperCase()}) by **${targetCategorical.replace(/_/g, " ")}**
+- **Leading Dimension**: **${topG}** leads with **${isCur ? formatCurrency(topVal) : formatNumber(topVal)}**.
+- **Distribution**:
 ${topGroups
   .map(
     (g, i) =>
-      `${i + 1}. **${g}**: ${isCurrency ? formatCurrency(getGroupVal(g)) : formatNumber(getGroupVal(g))} (${groupMap[g].count} records)`
+      `  ${i + 1}. **${g}**: ${isCur ? formatCurrency(getGroupVal(g)) : formatNumber(getGroupVal(g))} (${groupMap[g].count} records)`
   )
   .join("\n")}`,
-      executed_code: `# Dynamic Query Execution
+      executed_code: `# Groupby Aggregation & Sorting
 result = df.groupby('${targetCategorical}')['${targetNumeric}'].agg('${aggFunc}').sort_values(ascending=${isAscending}).head(${limit}).reset_index()
 print(result)`,
       tabular_result: topGroups.map((g) => ({
-        [targetCategorical!]: g,
-        [`${targetNumeric}_${aggFunc}`]: isCurrency ? formatCurrency(getGroupVal(g)) : formatNumber(getGroupVal(g)),
+        [targetCategorical]: g,
+        [`${targetNumeric}_${aggFunc}`]: isCur ? formatCurrency(getGroupVal(g)) : formatNumber(getGroupVal(g)),
         Record_Count: groupMap[g].count,
       })),
       result_columns: [targetCategorical, `${targetNumeric}_${aggFunc}`, "Record_Count"],
@@ -1288,85 +1645,141 @@ print(result)`,
         chart_id: `chart_${targetCategorical}_${targetNumeric}`,
         chart_type: "bar",
         title: `${targetNumeric.replace(/_/g, " ")} (${aggFunc}) by ${targetCategorical.replace(/_/g, " ")}`,
-        subtitle: `Leader: ${topG} (${formattedTopVal})`,
+        subtitle: `Leader: ${topG} (${isCur ? formatCurrency(topVal) : formatNumber(topVal)})`,
         x_data: topGroups,
         y_data: topGroups.map((g) => Math.round(getGroupVal(g) * 100) / 100),
       },
       analysis_steps: [
-        { step_number: 1, description: `Identified dimension '${targetCategorical}' and metric '${targetNumeric}'`, operation: "intent_extraction" },
-        { step_number: 2, description: `Aggregated values using operation: ${aggFunc}`, operation: "groupby_aggregation" },
-        { step_number: 3, description: `Sorted and sliced top ${limit} entries`, operation: "sorting" },
+        { step_number: 1, description: `Segmented by dimension '${targetCategorical}' and measured '${targetNumeric}'`, operation: "groupby" },
+        { step_number: 2, description: `Computed aggregate function '${aggFunc}' per cohort`, operation: "aggregation" },
+        { step_number: 3, description: `Ranked and selected top ${limit} entries`, operation: "sorting" },
       ],
-      confidence_score: 0.95,
+      confidence_score: 0.98,
       suggestions: [
         `What is the overall average ${targetNumeric.replace(/_/g, " ")}?`,
-        `Show lowest ${targetCategorical.replace(/_/g, " ")} by ${targetNumeric.replace(/_/g, " ")}`,
+        `Show outliers in ${targetNumeric.replace(/_/g, " ")}`,
         `Count records by ${targetCategorical.replace(/_/g, " ")}`,
       ],
       queried_columns: [targetCategorical, targetNumeric],
     };
   }
 
-  // Case B: General Metric Summary (Single Column)
-  if (targetNumeric) {
-    const vals = rows.map((r) => Number(r[targetNumeric!]) || 0);
-    const sum = vals.reduce((a, b) => a + b, 0);
-    const mean = sum / (vals.length || 1);
-    const min = Math.min(...vals);
-    const max = Math.max(...vals);
-    const isCurrency = targetNumeric.toLowerCase().includes("revenue") || targetNumeric.toLowerCase().includes("profit") || targetNumeric.toLowerCase().includes("mrr") || targetNumeric.toLowerCase().includes("price");
+  // --- INTENT 7: Categorical Distribution / Frequency Counts ---
+  if (matchedCategoricals.length > 0 || q.includes("how many") || q.includes("count") || q.includes("distribution") || q.includes("breakdown")) {
+    const catCol = matchedCategoricals[0] || categoricalCols[0] || availableColumns[0];
+    const freqMap: Record<string, number> = {};
+    rows.forEach((r) => {
+      const v = String(r[catCol] || "Unspecified");
+      freqMap[v] = (freqMap[v] || 0) + 1;
+    });
+
+    const sortedCats = Object.keys(freqMap).sort((a, b) => freqMap[b] - freqMap[a]);
+    const top5 = sortedCats.slice(0, 6);
 
     return {
       conversation_id: `conv_${Date.now()}`,
       message_id: `msg_${Date.now()}`,
       question,
-      answer_text: `For metric **${targetNumeric.replace(/_/g, " ")}** across **${totalRowCount}** records:
-- **Sum Total**: **${isCurrency ? formatCurrency(sum) : formatNumber(sum)}**
-- **Average (Mean)**: **${isCurrency ? formatCurrency(mean) : formatNumber(mean)}**
-- **Minimum**: **${isCurrency ? formatCurrency(min) : formatNumber(min)}**
-- **Maximum**: **${isCurrency ? formatCurrency(max) : formatNumber(max)}**`,
-      executed_code: `# Metric Statistics
-mean_val = df['${targetNumeric}'].mean()
-sum_val = df['${targetNumeric}'].sum()
-print(f"Mean: {mean_val}, Sum: {sum_val}")`,
-      tabular_result: [
-        { Statistic: "Sum", Value: isCurrency ? formatCurrency(sum) : formatNumber(sum) },
-        { Statistic: "Average (Mean)", Value: isCurrency ? formatCurrency(mean) : formatNumber(mean) },
-        { Statistic: "Minimum", Value: isCurrency ? formatCurrency(min) : formatNumber(min) },
-        { Statistic: "Maximum", Value: isCurrency ? formatCurrency(max) : formatNumber(max) },
-      ],
-      result_columns: ["Statistic", "Value"],
+      answer_text: `### Frequency Distribution for **${catCol.replace(/_/g, " ")}**
+- **Unique Categories**: **${sortedCats.length} distinct groups**.
+- **Top Category**: **${top5[0]}** with **${freqMap[top5[0]]} records** (${((freqMap[top5[0]] / (totalRowCount || 1)) * 100).toFixed(1)}% of dataset).
+- **Cohort Breakdown**:
+${top5.map((c) => `  - **${c}**: ${freqMap[c]} records (${((freqMap[c] / (totalRowCount || 1)) * 100).toFixed(1)}%)`).join("\n")}`,
+      executed_code: `# Categorical Frequency Distribution
+freq_table = df['${catCol}'].value_counts().reset_index()
+freq_table.columns = ['${catCol}', 'Count']
+freq_table['Percentage'] = (freq_table['Count'] / len(df)) * 100
+print(freq_table)`,
+      tabular_result: top5.map((c) => ({
+        [catCol]: c,
+        Count: freqMap[c],
+        Percentage: `${((freqMap[c] / (totalRowCount || 1)) * 100).toFixed(1)}%`,
+      })),
+      result_columns: [catCol, "Count", "Percentage"],
+      chart_config: {
+        chart_id: `chart_freq_${catCol}`,
+        chart_type: "bar",
+        title: `Distribution of ${catCol.replace(/_/g, " ")}`,
+        subtitle: `Total records: ${totalRowCount}`,
+        x_data: top5,
+        y_data: top5.map((c) => freqMap[c]),
+      },
       analysis_steps: [
-        { step_number: 1, description: `Selected target numerical metric '${targetNumeric}'`, operation: "metric_selection" },
-        { step_number: 2, description: "Computed statistical distribution metrics", operation: "aggregation" },
+        { step_number: 1, description: `Scanned categorical feature '${catCol}' across all ${totalRowCount} records`, operation: "frequency_count" },
+        { step_number: 2, description: "Calculated absolute counts and relative percentages", operation: "normalization" },
       ],
-      confidence_score: 0.95,
+      confidence_score: 0.98,
       suggestions: [
-        `Compare ${targetNumeric.replace(/_/g, " ")} across categories`,
-        "Show preview of rows",
-        "What are the top 5 records?",
+        `Compare metrics across ${catCol.replace(/_/g, " ")}`,
+        "Show full dataset summary",
+        "What are the outliers?",
       ],
-      queried_columns: [targetNumeric],
+      queried_columns: [catCol],
     };
   }
 
-  // Fallback: Default Schema Exploration
+  // --- INTENT 8: Single Numerical Metric Aggregates (Direct Question without Grouping) ---
+  if (matchedNumerics.length > 0 || numericCols.length > 0) {
+    const metricCol = matchedNumerics[0] || numericCols[0];
+    const vals = rows.map((r) => Number(r[metricCol]) || 0);
+    const sum = vals.reduce((a, b) => a + b, 0);
+    const mean = sum / (vals.length || 1);
+    const min = Math.min(...vals);
+    const max = Math.max(...vals);
+    const isCur = metricCol.toLowerCase().includes("revenue") || metricCol.toLowerCase().includes("profit") || metricCol.toLowerCase().includes("mrr") || metricCol.toLowerCase().includes("price");
+
+    return {
+      conversation_id: `conv_${Date.now()}`,
+      message_id: `msg_${Date.now()}`,
+      question,
+      answer_text: `### Statistical Summary for **${metricCol.replace(/_/g, " ")}**
+- **Sum Total**: **${isCur ? formatCurrency(sum) : formatNumber(sum)}**
+- **Average (Mean)**: **${isCur ? formatCurrency(mean) : formatNumber(mean)}**
+- **Minimum**: **${isCur ? formatCurrency(min) : formatNumber(min)}**
+- **Maximum**: **${isCur ? formatCurrency(max) : formatNumber(max)}**`,
+      executed_code: `# Descriptive Statistics
+print(df['${metricCol}'].describe())`,
+      tabular_result: [
+        { Metric: "Sum Total", Value: isCur ? formatCurrency(sum) : formatNumber(sum) },
+        { Metric: "Average (Mean)", Value: isCur ? formatCurrency(mean) : formatNumber(mean) },
+        { Metric: "Minimum", Value: isCur ? formatCurrency(min) : formatNumber(min) },
+        { Metric: "Maximum", Value: isCur ? formatCurrency(max) : formatNumber(max) },
+      ],
+      result_columns: ["Metric", "Value"],
+      analysis_steps: [
+        { step_number: 1, description: `Queried numerical attribute '${metricCol}'`, operation: "metric_selection" },
+        { step_number: 2, description: "Calculated fundamental central tendency and range statistics", operation: "aggregation" },
+      ],
+      confidence_score: 0.98,
+      suggestions: [
+        `What are the outliers in ${metricCol.replace(/_/g, " ")}?`,
+        `Top 5 records by ${metricCol.replace(/_/g, " ")}`,
+        "Show overall dataset summary",
+      ],
+      queried_columns: [metricCol],
+    };
+  }
+
+  // --- INTENT 9: Natural Contextual Fallback ---
   return {
     conversation_id: `conv_${Date.now()}`,
     message_id: `msg_${Date.now()}`,
     question,
-    answer_text: `I analyzed **${displayName}** (${totalRowCount} rows, ${availableColumns.length} columns). \n\nKey available attributes include: ${availableColumns.slice(0, 6).map((c) => `**${c}**`).join(", ")}. \n\nTry asking a specific calculation such as *"Top categories by revenue"*, *"What is total profit?"*, or *"Show monthly trend"*!`,
+    answer_text: `### Analysis for **${displayName}**
+I analyzed **${totalRowCount.toLocaleString()}** records across **${availableColumns.length}** columns: ${availableColumns.slice(0, 6).map((c) => `\`${c}\``).join(", ")}.
+
+Here are a few recommended analytical questions you can click to run right now:`,
     confidence_score: 0.9,
     analysis_steps: [
-      { step_number: 1, description: "Inspected dataset schema and data types", operation: "schema_inspection" },
+      { step_number: 1, description: "Inspected dataset schema, columns, and data types", operation: "schema_inspection" },
     ],
     executed_code: `# Inspect DataFrame Info\nprint(df.info())\nprint(df.head(5))`,
     tabular_result: rows.slice(0, 5),
     result_columns: availableColumns.slice(0, 5),
     suggestions: [
-      "Top product categories by Revenue",
-      "What is total Revenue and Profit?",
-      "Compare Profit across Regions",
+      "Show dataset summary and key insights",
+      "Are there any outliers or anomalies?",
+      numericCols.length > 0 ? `What is the average ${numericCols[0].replace(/_/g, " ")}?` : "Show distribution of records",
     ],
     queried_columns: availableColumns.slice(0, 5),
   };

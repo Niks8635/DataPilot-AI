@@ -21,9 +21,9 @@ export default function SignupPage() {
     try {
       setLoading(true);
       setError("");
-      const res = await api.auth.signup({ email, password, full_name: fullName });
-      localStorage.setItem("datapilot_token", res.access_token);
-      router.push("/dashboard");
+      await api.auth.signup({ email, password, full_name: fullName });
+      // Redirect to login page so user logs in completely with credentials
+      router.push(`/login?registered=1&email=${encodeURIComponent(email)}`);
     } catch (err: any) {
       setError(err.message || "Failed to create account.");
     } finally {

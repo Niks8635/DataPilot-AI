@@ -1,19 +1,34 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { Sparkles, ArrowRight, Lock, Mail, AlertCircle, ShieldCheck, Home } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Sparkles, Lock, Mail, AlertCircle, ShieldCheck, Home, CheckCircle2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
+import { Card } from "@/components/ui/Card";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const registeredParam = searchParams.get("registered");
+  const emailParam = searchParams.get("email");
+
   const [email, setEmail] = useState("analyst@datapilot.ai");
   const [password, setPassword] = useState("password123");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [justRegistered, setJustRegistered] = useState(false);
+
+  useEffect(() => {
+    if (registeredParam === "1") {
+      setJustRegistered(true);
+      if (emailParam) {
+        setEmail(emailParam);
+        setPassword("");
+      }
+    }
+  }, [registeredParam, emailParam]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,8 +39,7 @@ export default function LoginPage() {
       localStorage.setItem("datapilot_token", res.access_token);
       router.push("/dashboard");
     } catch (err: any) {
-      // In local dev, allow quick pass if user wants demo access
-      setError(err.message || "Invalid credentials");
+      setError(err.message || "Invalid credentials. Please verify your email and password.");
     } finally {
       setLoading(false);
     }
@@ -47,7 +61,7 @@ export default function LoginPage() {
         <Link
           href="/"
           className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-900/80 hover:bg-slate-800/90 border border-white/[0.08] hover:border-cyan-500/40 text-slate-300 hover:text-white text-xs font-medium transition-all shadow-lg backdrop-blur-md group active:scale-[0.98]"
-          title="Return to Main Website Home (http://localhost:3000/)"
+          title="Return to Main Website Home"
         >
           <Home className="w-3.5 h-3.5 text-cyan-400 group-hover:scale-110 transition-transform" />
           <span>Return to Home</span>
@@ -73,6 +87,18 @@ export default function LoginPage() {
 
         <Card className="p-6 border-white/[0.09] bg-slate-900/80 backdrop-blur-xl shadow-2xl">
           <form onSubmit={handleLogin} className="space-y-4">
+            {justRegistered && (
+              <div className="p-3.5 rounded-xl bg-emerald-950/60 border border-emerald-600/40 text-xs text-emerald-300 flex items-start gap-2.5 animate-in fade-in">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-semibold text-white">Registration successful!</span>
+                  <p className="text-[11px] text-emerald-300/90 mt-0.5">
+                    Your account has been created. Please enter your password to sign in.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {error && (
               <div className="p-3 rounded-lg bg-rose-950/50 border border-rose-800 text-xs text-rose-300 flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
@@ -144,5 +170,19 @@ export default function LoginPage() {
         </Card>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-slate-950 flex items-center justify-center text-xs text-slate-400">
+          Loading Sign In...
+        </div>
+      }
+    >
+      <LoginForm />
+    </Suspense>
   );
 }

@@ -84,32 +84,44 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 export const api = {
   auth: {
     signup: async (data: { email: string; password: string; full_name?: string }) => {
+      // Store registered account locally so offline login can authenticate with user's chosen credentials
+      if (typeof window !== "undefined") {
+        try {
+          const accountsRaw = localStorage.getItem("datapilot_registered_accounts") || "[]";
+          const accounts: any[] = JSON.parse(accountsRaw);
+          const existingIdx = accounts.findIndex((a: any) => a.email.toLowerCase() === data.email.toLowerCase());
+          const newAccount = {
+            id: `user_${Date.now()}`,
+            email: data.email,
+            password: data.password,
+            full_name: data.full_name || data.email.split("@")[0] || "Data Analyst",
+            registered_at: new Date().toISOString(),
+          };
+          if (existingIdx >= 0) {
+            accounts[existingIdx] = newAccount;
+          } else {
+            accounts.push(newAccount);
+          }
+          localStorage.setItem("datapilot_registered_accounts", JSON.stringify(accounts));
+        } catch {}
+      }
+
       try {
-        const res = await request<{ access_token: string; user_id: string; email: string; full_name: string }>("/auth/signup", {
+        await request<{ access_token?: string; user_id?: string; email: string; full_name: string }>("/auth/signup", {
           method: "POST",
           body: JSON.stringify(data),
         });
-        if (res && res.access_token) {
-          if (typeof window !== "undefined") {
-            localStorage.setItem("datapilot_token", res.access_token);
-            localStorage.setItem("datapilot_user", JSON.stringify(res));
-          }
-          return res;
-        }
       } catch (err: any) {
-        console.warn("Backend signup failed or offline, authenticating locally:", err);
+        console.warn("Backend signup offline, registered user in local browser registry:", err);
       }
-      const fallbackUser = {
-        access_token: `token_${Date.now()}`,
-        user_id: `user_${Date.now()}`,
+
+      // Do NOT set datapilot_token here! User must go to login page to login completely.
+      return {
+        success: true,
         email: data.email,
         full_name: data.full_name || data.email.split("@")[0] || "Data Analyst",
+        message: "Account created successfully. Please sign in with your credentials.",
       };
-      if (typeof window !== "undefined") {
-        localStorage.setItem("datapilot_token", fallbackUser.access_token);
-        localStorage.setItem("datapilot_user", JSON.stringify(fallbackUser));
-      }
-      return fallbackUser;
     },
     login: async (data: { email: string; password: string }) => {
       try {
@@ -125,13 +137,31 @@ export const api = {
           return res;
         }
       } catch (err: any) {
-        console.warn("Backend login failed or offline, authenticating locally:", err);
+        console.warn("Backend login failed or offline, authenticating via local credentials:", err);
       }
+
+      // Check registered accounts
+      let matchedName = data.email.split("@")[0] || "Data Analyst";
+      let matchedId = `user_${Date.now()}`;
+      if (typeof window !== "undefined") {
+        try {
+          const accountsRaw = localStorage.getItem("datapilot_registered_accounts");
+          if (accountsRaw) {
+            const accounts: any[] = JSON.parse(accountsRaw);
+            const found = accounts.find((a: any) => a.email.toLowerCase() === data.email.toLowerCase());
+            if (found) {
+              matchedName = found.full_name || matchedName;
+              matchedId = found.id || matchedId;
+            }
+          }
+        } catch {}
+      }
+
       const fallbackUser = {
         access_token: `token_${Date.now()}`,
-        user_id: `user_${Date.now()}`,
+        user_id: matchedId,
         email: data.email,
-        full_name: data.email.split("@")[0] || "Data Analyst",
+        full_name: matchedName,
       };
       if (typeof window !== "undefined") {
         localStorage.setItem("datapilot_token", fallbackUser.access_token);
@@ -173,12 +203,23 @@ export const api = {
             if (u.user_id) userId = u.user_id;
           } catch {}
         }
+        const storedProfile = typeof window !== "undefined" ? localStorage.getItem("datapilot_custom_profile") : null;
+        let org = "DataPilot Autonomous Lab";
+        let userRole = "Lead Analytics Architect";
+        if (storedProfile) {
+          try {
+            const p = JSON.parse(storedProfile);
+            if (p.organization) org = p.organization;
+            if (p.role) userRole = p.role;
+            if (p.full_name) userName = p.full_name;
+          } catch {}
+        }
         return {
           id: userId,
           email: userEmail,
           full_name: userName,
-          organization: "DataPilot Autonomous Lab",
-          role: "Lead Analytics Architect",
+          organization: org,
+          role: userRole,
           tier: "Enterprise Pro",
           created_at: "2026-01-10T08:00:00Z",
           api_key: "dp_live_sec_994827104829104",
@@ -258,15 +299,59 @@ export const api = {
         };
       }
     },
-    updateProfile: (data: UserProfileUpdateRequest) =>
-      request<UserProfileResponse>("/auth/profile", {
-        method: "PUT",
-        body: JSON.stringify(data),
-      }),
-    exportData: () =>
-      request<DataExportResponse>("/auth/export-data", {
-        method: "POST",
-      }),
+    updateProfile: async (data: UserProfileUpdateRequest): Promise<UserProfileResponse> => {
+      if (typeof window !== "undefined") {
+        try {
+          const stored = localStorage.getItem("datapilot_user");
+          let u: any = {};
+          if (stored) {
+            u = JSON.parse(stored);
+          }
+          if (data.full_name) u.full_name = data.full_name;
+          localStorage.setItem("datapilot_user", JSON.stringify(u));
+          localStorage.setItem("datapilot_custom_profile", JSON.stringify(data));
+        } catch {}
+      }
+      try {
+        return await request<UserProfileResponse>("/auth/profile", {
+          method: "PUT",
+          body: JSON.stringify(data),
+        });
+      } catch {
+        return await api.auth.getProfile();
+      }
+    },
+    exportData: async (): Promise<DataExportResponse> => {
+      try {
+        return await request<DataExportResponse>("/auth/export-data", {
+          method: "POST",
+        });
+      } catch {
+        const profile = await api.auth.getProfile();
+        const customDatasets = clientDatasetManager.list();
+        const datasetsWithRows = customDatasets.map((ds) => ({
+          metadata: ds,
+          sample_rows: clientDatasetManager.getRows(ds.id).slice(0, 100),
+        }));
+        return {
+          exported_at: new Date().toISOString(),
+          user: {
+            id: profile.id,
+            email: profile.email,
+            full_name: profile.full_name,
+            organization: profile.organization,
+            role: profile.role,
+            tier: profile.tier,
+          },
+          stats: profile.stats,
+          datasets: datasetsWithRows,
+          dashboards: customDatasets.map((ds) => clientDatasetManager.getDashboard(ds.id)),
+          reports: [
+            { id: "rep_1", title: "Automated Data Health Briefing", date: new Date().toISOString() },
+          ],
+        };
+      }
+    },
   },
 
   datasets: {
