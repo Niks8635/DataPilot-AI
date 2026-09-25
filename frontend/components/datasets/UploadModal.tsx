@@ -66,17 +66,18 @@ export function UploadModal({ isOpen, onClose, onSuccess }: UploadModalProps) {
   const handleUpload = async () => {
     if (!file) return;
     try {
+      setErrorMessage("");
       setStatus("uploading");
-      // Simulate stepped progression UX
-      setTimeout(() => setStatus("parsing"), 400);
-      setTimeout(() => setStatus("profiling"), 900);
+      await new Promise((r) => setTimeout(r, 300));
+      setStatus("parsing");
+      await new Promise((r) => setTimeout(r, 300));
+      setStatus("profiling");
 
       const dataset = await api.datasets.upload(file, datasetName);
       setStatus("ready");
-      setTimeout(() => {
-        onSuccess(dataset);
-        reset();
-      }, 500);
+      await new Promise((r) => setTimeout(r, 450));
+      onSuccess(dataset);
+      reset();
     } catch (err: any) {
       setStatus("error");
       setErrorMessage(err.message || "Failed to process dataset. Please check the file formatting.");

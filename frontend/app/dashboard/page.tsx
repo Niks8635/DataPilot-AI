@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { 
   Database, 
   BarChart3, 
@@ -33,6 +34,7 @@ import { formatBytes } from "@/lib/utils";
 import { DEMO_DATASETS, getDemoReports } from "@/lib/demoDatasets";
 
 export default function DashboardHomePage() {
+  const router = useRouter();
   const [datasets, setDatasets] = useState<Dataset[]>(DEMO_DATASETS);
   const [reports, setReports] = useState<Report[]>(getDemoReports());
   const [loading, setLoading] = useState(false);
@@ -343,6 +345,9 @@ export default function DashboardHomePage() {
         onClose={() => setUploadOpen(false)}
         onSuccess={(newDs) => {
           setDatasets((prev) => [newDs, ...prev]);
+          if (newDs?.id) {
+            router.push(`/datasets/${newDs.id}`);
+          }
         }}
       />
     </div>

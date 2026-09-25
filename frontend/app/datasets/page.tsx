@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { 
   Database, 
   Plus, 
@@ -28,6 +29,7 @@ import { formatBytes } from "@/lib/utils";
 import { DEMO_DATASETS, getDemoRelationships } from "@/lib/demoDatasets";
 
 export default function DatasetsPage() {
+  const router = useRouter();
   const [datasets, setDatasets] = useState<Dataset[]>(DEMO_DATASETS);
   const [relationships, setRelationships] = useState<any[]>(getDemoRelationships());
   const [loading, setLoading] = useState(false);
@@ -212,6 +214,9 @@ export default function DatasetsPage() {
         onClose={() => setUploadOpen(false)}
         onSuccess={(newDs) => {
           setDatasets((prev) => [newDs, ...prev]);
+          if (newDs?.id) {
+            router.push(`/datasets/${newDs.id}`);
+          }
         }}
       />
     </div>
