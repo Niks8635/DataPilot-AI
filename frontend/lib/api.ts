@@ -33,6 +33,7 @@ import {
 } from "@/lib/demoDatasets";
 import { processClientAskDataQuery } from "@/lib/askDataEngine";
 import { clientDatasetManager } from "@/lib/clientDatasetManager";
+import { reportEngine } from "@/lib/reportEngine";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
@@ -858,37 +859,50 @@ export const api = {
   },
 
   reports: {
-    generate: (
+    generate: async (
       datasetId: string,
       title?: string,
       includeSections?: string[],
       customNotes?: string
-    ) =>
-      request<Report>("/reports/generate", {
-        method: "POST",
-        body: JSON.stringify({
-          dataset_id: datasetId,
-          title,
-          include_sections: includeSections,
-          custom_notes: customNotes,
-        }),
-      }),
+    ): Promise<Report> => {
+      try {
+        return await request<Report>("/reports/generate", {
+          method: "POST",
+          body: JSON.stringify({
+            dataset_id: datasetId,
+            title,
+            include_sections: includeSections,
+            custom_notes: customNotes,
+          }),
+        });
+      } catch (err) {
+        console.warn("Backend report generation offline, generating in browser with reportEngine:", err);
+        return reportEngine.generate(datasetId, title, includeSections, customNotes);
+      }
+    },
     list: async (): Promise<Report[]> => {
+      const clientList = reportEngine.list();
       try {
         const list = await request<Report[]>("/reports");
-        if (Array.isArray(list) && list.length > 0) return list;
+        if (Array.isArray(list) && list.length > 0) {
+          const customOnly = clientList.filter((r) => r.id.startsWith("rep_"));
+          return [...customOnly, ...list];
+        }
       } catch {}
-      return getDemoReports();
+      return clientList;
     },
     get: async (id: string): Promise<Report> => {
+      const local = reportEngine.get(id);
+      if (local) return local;
       try {
         return await request<Report>(`/reports/${id}`);
       } catch {
-        const rep = getDemoReports().find((r) => r.id === id);
-        return rep || getDemoReports()[0];
+        return reportEngine.list()[0];
       }
     },
-    getHtmlUrl: (id: string) => `${API_BASE_URL}/reports/${id}/html`,
+    getHtmlUrl: (id: string): string => {
+      return reportEngine.getHtmlUrl(id);
+    },
   },
 
   relationships: {

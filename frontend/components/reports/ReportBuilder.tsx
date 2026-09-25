@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import { 
   FileText, 
   Printer, 
@@ -65,6 +66,18 @@ export function ReportBuilder({ datasetId, datasetName }: ReportBuilderProps) {
 
   const handlePrint = () => {
     if (!generatedReport) return;
+    try {
+      const printWindow = window.open("", "_blank");
+      if (printWindow && generatedReport.html_content) {
+        printWindow.document.write(generatedReport.html_content);
+        printWindow.document.close();
+        printWindow.focus();
+        setTimeout(() => {
+          printWindow.print();
+        }, 400);
+        return;
+      }
+    } catch {}
     const win = window.open(api.reports.getHtmlUrl(generatedReport.id), "_blank");
     if (win) {
       win.focus();
@@ -211,9 +224,15 @@ export function ReportBuilder({ datasetId, datasetName }: ReportBuilderProps) {
                   <span className="text-xs font-semibold text-slate-200">{generatedReport.title}</span>
                 </div>
                 <div className="flex items-center gap-2">
+                  <Link href={`/reports/${generatedReport.id}`}>
+                    <Button variant="luxury" size="sm">
+                      <Eye className="w-3.5 h-3.5 mr-1" />
+                      View Full Report
+                    </Button>
+                  </Link>
                   <Button variant="outline" size="sm" onClick={handlePrint}>
                     <Printer className="w-3.5 h-3.5 mr-1 text-cyan-400" />
-                    Open Print / PDF View
+                    Print / PDF
                   </Button>
                 </div>
               </div>
@@ -221,6 +240,7 @@ export function ReportBuilder({ datasetId, datasetName }: ReportBuilderProps) {
               {/* Embedded Document Frame */}
               <div className="flex-1 bg-white min-h-[600px]">
                 <iframe
+                  srcDoc={generatedReport.html_content}
                   src={api.reports.getHtmlUrl(generatedReport.id)}
                   title="Report Preview"
                   className="w-full h-full min-h-[600px] border-none"
